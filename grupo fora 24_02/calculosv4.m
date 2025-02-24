@@ -1,0 +1,535 @@
+%Função para o cálculo do peso próprio final da estrutura, com base nos
+%dados de entrada, além de fazer as verificações das hipóteses de cálculo
+%com os máximos permitidos pelas NBR 8800/2008.
+
+function [custo_total] = calculosv4(perfil_telha,perfil_terca,perfil_tirante_y,h,b,espacamento_entre_porticos,V,S1,S3,Cpi1,Cpi2,x,y,n_nos,n_el,E,G,fy,fu,Areas,bw_,tw_,Ix_,Iy_,rx_,ry_,rmin_,Xbarra_,conec,n_rest,GDL_rest,telha,cargaamdt,sc,Ct,t_espacamento,esp_terca,n_divisoes_banzo_inf,n_divisoes_banzo_sup,terca_a_cada_divisao_banzo_sup,altura_cobertura,n_contraventamentos,n_tercas,esp_cv,cv_a_cada_divisao_banzo_inf,esp_entre_banzos,perfil_mao_francesa,xx,yy,zz,conec_esc,num_nos_cv,n_el_cv,n_rest_cv,GDL_rest_cv,n_forcas_cv,area_escora_comp,Iyy,Ixx,bww,tww,bff,tff,ryy,rxx,FtRd_tir,XX,num_tirante,num_esc,d_tir,dist_entre_esc,Ab_tir_x)
+A=zeros(n_el,1);
+An=zeros(n_el,1);
+bw=zeros(n_el,1);
+tw=zeros(n_el,1);
+Ix=zeros(n_el,1);
+Iy=zeros(n_el,1);
+rx=zeros(n_el,1);
+ry=zeros(n_el,1);
+rmin=zeros(n_el,1);
+Xbarra=zeros(n_el,1);
+
+for el=1:n_el
+    A(el)=Areas(conec(el,2));
+    An(el)=A(el)*conec(el,5);
+    bw(el)= bw_(conec(el,2));
+    tw(el)= tw_(conec(el,2));
+    Ix(el)= Ix_(conec(el,2));
+    Iy(el)= Iy_(conec(el,2));
+    rx(el)= rx_(conec(el,2));
+    ry(el)= ry_(conec(el,2));
+    rmin(el)= rmin_(conec(el,2));
+    Xbarra(el)= Xbarra_(conec(el,2));
+end
+
+
+%% INCLINAÇÃO DO BANZO SUPERIOR DA TRELIÇA
+incl= atan(altura_cobertura/(b/2))*(360/(2*pi)); %inclinação do telhado, em graus
+
+%% Matriz Peso Próprio
+pp=zeros(n_nos,3);% pp=[nó   intensidade_x  intensidade_y] inicialmente zeros
+for n=1:n_nos
+    pp(n,1)= n; %número do nó
+end
+
+for el=1:n_el
+    %calculo do comprimento do elemento el
+    no1=conec(el,3);
+    no2=conec(el,4);
+    L = sqrt((x(no2) - x(no1))^2 + (y(no2) - y(no1))^2);
+    
+    peso_el= 77000*L*An(el); %peso de uma barra em N
+    pp_no = peso_el/2; %metade do peso para cada nó
+    pp(no1,3)=pp(no1,3)-pp_no;
+    pp(no2,3)=pp(no2,3)-pp_no;
+end
+
+peso_trelica_sec=0;
+for n=1:n_nos
+    peso_trelica_sec = peso_trelica_sec -pp(n,3)/9.81; %SOMA DO PESO PRÓPRIO DA TRELIÇA
+end
+
+%% FORÇA DO VENTO
+
+%S2 = Categoria IV, Classe B(20 a 50m), altura = ? - Tabela 2 NBR 6123/1988
+H = h + altura_cobertura; %altura total = pórtico + treliça
+if (5<H) && (H<=10)
+    S2=0.07*(H-5)/5 + 0.76;
+elseif (10<H) && (H<=15)
+    S2=0.05*(H-10)/5 + 0.83;
+elseif (15<H) && (H<=20)
+    S2=0.03*(H-15)/5 + 0.88;
+end
+
+Vk = S1*S2*S3*V;
+p = 0.613*(Vk^2); %N/m²
+
+%Tabela 5 da NBR 6123/1988 em intervalos para o caso de h/b<=0.5
+C0 = c0 (incl,Cpi1,Cpi2);
+C90d = c90d (incl,Cpi1,Cpi2);
+C90e = c90e (incl,Cpi1,Cpi2);
+
+q0 = p*C0*espacamento_entre_porticos; %N/m
+q90d = p*C90d*espacamento_entre_porticos; %N/m
+q90e = p*C90e*espacamento_entre_porticos; %N/m
+
+V0 =zeros(n_nos,3);% [nó   intensidade_x  intensidade_y] inicialmente zeros
+for n=1:n_nos
+    V0(n,1)= n;
+end
+
+V0((n_divisoes_banzo_inf+1)*2+2,3)= q0*(esp_terca/2)*cos(incl*2*pi/360);
+V0(n_nos,3)= V0((n_divisoes_banzo_inf+1)*2+2,3);
+V0((n_divisoes_banzo_inf+1)*2+2,2)= -(q0*(esp_terca/2)*sin(incl*2*pi/360));
+V0(n_nos,2)= -(V0((n_divisoes_banzo_inf+1)*2+2,2));
+
+for n=(n_divisoes_banzo_inf+1)*2+2:terca_a_cada_divisao_banzo_sup:(n_divisoes_banzo_inf+1)*2+2*n_divisoes_banzo_sup
+    if n~=(n_divisoes_banzo_inf+1)*2+2
+        V0(n,3)= q0*esp_terca*cos(incl*2*pi/360);
+        if x(n)<b/2
+            V0(n,2)= -(q0*esp_terca*sin(incl*2*pi/360));
+        elseif x(n)>b/2
+            V0(n,2)=(q0*esp_terca*sin(incl*2*pi/360));
+        elseif x(n)== b/2
+            V0(n,2)= 0;
+        end
+    end
+end
+
+V90d =zeros(n_nos,3);% [nó   intensidade_x  intensidade_y] inicialmente zeros
+for n=1:n_nos
+    V90d(n,1)= n;
+end
+V90d((n_divisoes_banzo_inf+1)*2+2,3)= q90d*(esp_terca/2)*cos(incl*2*pi/360);
+V90d(n_nos,3)= V90d((n_divisoes_banzo_inf+1)*2+2,3);
+V90d((n_divisoes_banzo_inf+1)*2+2,2)= -(q90d*(esp_terca/2)*sin(incl*2*pi/360));
+V90d(n_nos,2)= -(V90d((n_divisoes_banzo_inf+1)*2+2,2));
+
+for n=(n_divisoes_banzo_inf+1)*2+2:terca_a_cada_divisao_banzo_sup:(n_divisoes_banzo_inf+1)*2+2*n_divisoes_banzo_sup
+    if n~=(n_divisoes_banzo_inf+1)*2+2
+        V90d(n,3)= q90d*esp_terca*cos(incl*2*pi/360);
+        if x(n)<b/2
+            V90d(n,2)= -(q90d*esp_terca*sin(incl*2*pi/360));
+        elseif x(n)>b/2
+            V90d(n,2)=(q90d*esp_terca*sin(incl*2*pi/360));
+        elseif x(n)== b/2
+            V90d(n,2)= 0;
+        end
+    end
+end
+
+V90e =zeros(n_nos,3);% [nó   intensidade_x  intensidade_y] inicialmente zeros
+for n=1:n_nos
+    V90e(n,1)= n;
+end
+V90e((n_divisoes_banzo_inf+1)*2+2,3)= q90e*(esp_terca/2)*cos(incl*2*pi/360);
+V90e(n_nos,3)= V90e((n_divisoes_banzo_inf+1)*2+2,3);
+V90e((n_divisoes_banzo_inf+1)*2+2,2)= -(q90e*(esp_terca/2)*sin(incl*2*pi/360));
+V90e(n_nos,2)= -(V90e((n_divisoes_banzo_inf+1)*2+2,2));
+
+for n=(n_divisoes_banzo_inf+1)*2+2:terca_a_cada_divisao_banzo_sup:(n_divisoes_banzo_inf+1)*2+2*n_divisoes_banzo_sup
+    if n~=(n_divisoes_banzo_inf+1)*2+2
+        V90e(n,3)= q90e*esp_terca*cos(incl*2*pi/360);
+        if x(n)<b/2
+            V90e(n,2)= -(q90e*esp_terca*sin(incl*2*pi/360));
+        elseif x(n)>b/2
+            V90e(n,2)=(q90e*esp_terca*sin(incl*2*pi/360));
+        elseif x(n)== b/2
+            V90e(n,2)= 0;
+        end
+    end
+end
+
+%% ESPAÇAMENTO ENTRE NÓS = FUNÇÃO DA TELHA
+
+combt1 = 1.25*telha(perfil_telha,2) + 1.5*sc; %N/m² - direção y
+combt2 = telha(perfil_telha,2) - 1.4*p; %estranho - verificar
+
+if abs(combt1)>=abs(combt2)
+    combt = abs(combt1);
+else combt = abs(combt2);
+end
+
+pen_telha = 0;
+if combt<=cargaamdt(t_espacamento,perfil_telha+1)
+    pen_telha = 1e+10;
+end
+espmax=cargaamdt(t_espacamento,1);
+
+if esp_terca>espmax
+    pen_telha=1e+10;
+end
+
+carga_telha = telha(perfil_telha,2);
+espessura_telha=telha(perfil_telha,1);
+
+%% TIRANTES Y - redução do comprimento de flambagem da terças
+[pptirante, preco_tirante_y_sec,pen_tirante,peso_tirante_y_sec]= tirante_y (perfil_tirante_y,fu,fy,carga_telha,sc,incl,espacamento_entre_porticos,esp_terca,n_tercas); %N/m
+ti =zeros(n_nos,3);% [nó   intensidade_x  intensidade_y] inicialmente zeros
+for n=1:n_nos
+    ti(n,1)= n;
+end
+ti((n_divisoes_banzo_inf+1)*2+2,3)= -pptirante*esp_terca/2;
+ti(n_nos,3)= ti((n_divisoes_banzo_inf+1)*2+2,3);
+for n=(n_divisoes_banzo_inf+1)*2+2:terca_a_cada_divisao_banzo_sup:(n_divisoes_banzo_inf+1)*2+2*n_divisoes_banzo_sup
+    if n~=(n_divisoes_banzo_inf+1)*2+2
+        if n==(n_divisoes_banzo_inf+1)*2+n_divisoes_banzo_sup+2
+            ti(n,3)= -pptirante*sqrt(esp_terca^2+(espacamento_entre_porticos/2)^2)*2;
+        elseif n==(n_divisoes_banzo_inf+1)*2+n_divisoes_banzo_sup+2-terca_a_cada_divisao_banzo_sup || n==(n_divisoes_banzo_inf+1)*2+n_divisoes_banzo_sup+2+terca_a_cada_divisao_banzo_sup
+            ti(n,3)= -pptirante*sqrt(esp_terca^2+(espacamento_entre_porticos/2)^2)-pptirante*esp_terca/2;
+        else
+            ti(n,3)= -pptirante*(esp_terca);
+        end
+    end
+end
+
+%% MÃO FRANCESA %Contraventamento do banzo inferior da treliça
+[pp_mao_francesa,preco_mao_francesa_sec,pen_mao_francesa,peso_mao_francesa_sec,comprimento_mao_francesa]=mao_francesa(n_contraventamentos,esp_entre_banzos,perfil_mao_francesa);
+
+tmf =zeros(n_nos,3);% [nó   intensidade_x  intensidade_y] inicialmente zeros
+for n=1:n_nos
+    tmf(n,1)= n;
+end
+for n=1:cv_a_cada_divisao_banzo_inf:(n_divisoes_banzo_inf+1)*2
+        tmf(n,3)= -pp_mao_francesa;
+end
+
+tmf(n_divisoes_banzo_inf+1,3)= 2*tmf(n_divisoes_banzo_inf+1,3);
+%% TERÇA
+[ppterca,preco_terca_sec,pen_terca,peso_terca_sec] = tercav2 (perfil_terca,carga_telha,pptirante,sc,esp_terca,p,incl,Cpi2,espacamento_entre_porticos,E,fy,n_tercas,pp_mao_francesa,comprimento_mao_francesa); %N/m
+tc =zeros(n_nos,3);% [nó   intensidade_x  intensidade_y] inicialmente zeros
+for n=1:n_nos
+    tc(n,1)= n;
+end
+tc((n_divisoes_banzo_inf+1)*2+2,3)= -ppterca*(espacamento_entre_porticos);
+tc(n_nos,3)= tc((n_divisoes_banzo_inf+1)*2+2,3);
+for n=(n_divisoes_banzo_inf+1)*2+2:terca_a_cada_divisao_banzo_sup:(n_divisoes_banzo_inf+1)*2+2*n_divisoes_banzo_sup
+    if n~=(n_divisoes_banzo_inf+1)*2+2
+        tc(n,3)= -ppterca*(espacamento_entre_porticos); %carregamento negativo pq é para baixo
+    end
+end
+%Considerando dois perfis U na terça da cumeeira
+tc((n_divisoes_banzo_inf+1)*2+n_divisoes_banzo_sup+2,3)= 2*tc((n_divisoes_banzo_inf+1)*2+n_divisoes_banzo_sup+2,3);
+
+%% TELHAS
+carga_telha = carga_telha*espacamento_entre_porticos; %N/m
+peso_telha_sec = carga_telha*esp_terca*(n_tercas-1)/9.81;
+preco_unitario=4.48; %preço estimado: R$ 30.69/kg
+preco_telha_sec=preco_unitario*peso_telha_sec;
+tl =zeros(n_nos,3);% [nó   intensidade_x  intensidade_y] inicialmente zeros
+for n=1:n_nos
+    tl(n,1)= n;
+end
+tl((n_divisoes_banzo_inf+1)*2+2,3)= -carga_telha*(esp_terca/2);
+tl(n_nos,3)= tl((n_divisoes_banzo_inf+1)*2+2,3);
+for n=(n_divisoes_banzo_inf+1)*2+2:terca_a_cada_divisao_banzo_sup:(n_divisoes_banzo_inf+1)*2+2*n_divisoes_banzo_sup
+    if n~=(n_divisoes_banzo_inf+1)*2+2
+        tl(n,3)= -carga_telha*(esp_terca);
+    end
+end
+
+%% CONTRAVENTAMENTO DAS TERÇAS ESCORAS COMPRIMIDAS
+
+p_esc=zeros(num_nos_cv,1);%pressao dinamica do vento
+
+for i=(num_nos_cv/2)+1:(num_nos_cv)
+    if zz(i)<=b/2
+        alt=(zz(i)*altura_cobertura)/(b/2);
+    else
+        alt=((b-zz(i))*altura_cobertura)/(b/2);
+    end
+    
+    H=alt+h;
+    
+    if (5<H) && (H<=10)
+        S2=0.07*(H-5)/5 + 0.76;
+    elseif (10<H) && (H<=15)
+        S2=0.05*(H-10)/5 + 0.83;
+    elseif (15<H) && (H<=20)
+        S2=0.03*(H-15)/5 + 0.88;
+    end
+    
+    Vk_esc = S1*S2*S3*V;
+    p_esc(i) = 0.613*(Vk_esc^2); %N/m²
+    
+end
+
+assignin('base','p_esc',p_esc);%p_esc é o vetor com as pressoes dinamicas calculadas, em N/m2
+
+%Tabela 5 da NBR 6123/1988 em intervalos para o caso de h/b<=0.5
+%%C0 = c0 (incl,Cpi1,Cpi2);
+p = p_esc*C0;
+esp_z=zz(2)-zz(1);%espaco entre duas escoras, visto no plano da linha de horizonte
+
+assignin('base','p',p);
+forca_v=zeros(num_nos_cv,1);
+
+for j=(1+(num_nos_cv/2)):(num_nos_cv)
+    if zz(j)==0 || zz(j)==b
+        forca_v(j)=p(j)*(esp_z/2);
+    else
+        forca_v(j)=p(j)*esp_z;
+    end 
+end
+
+% O vetor forca_v considera todos os nos, enquanto o vetor forcas considera
+% apenas os nos carregado, no caso, a segunda metade dos nos
+forcas =zeros(n_forcas_cv,3); %Apenas os nos de um lado recebem forcas externas de vento, ou seja, metade dos nos
+for n=1:n_forcas_cv
+    forcas(n,1)= n+(n_forcas_cv);                  %numero do no
+    forcas(n,2)= 0;                                %forca em x
+    forcas(n,3)= -forca_v(n+(num_nos_cv/2));       %forca em y
+end
+
+fn_cv = forcas_internas_esc (xx,yy,num_nos_cv,n_el_cv,E,conec_esc,n_rest_cv,GDL_rest_cv,n_forcas_cv,forcas);
+assignin('base','forcas',forcas);
+
+fn_cv_u=zeros(1,n_el_cv); % ESFORÇO INTERNO NOS ELEMENTOS PERFIL U DO CONTRAVENTAMENTO
+fn_cv_tir=zeros(1,n_el_cv);% ESFORÇO INTERNO NOS TIRANTES DO CONTRAVENTAMENTO
+fn_cv_banzo=zeros(1,n_el_cv);% ESFORÇO INTERNO NOS BANZOS (CANTONEIRA DUPLA) DO CONTRAVENTAMENTO
+
+for c=1:n_el_cv
+    if c<=num_esc
+        fn_cv_u(c)=fn_cv(c);
+    elseif c>num_esc && c<=(num_esc+num_tirante)
+        fn_cv_tir(c)=fn_cv(c);
+    else
+        fn_cv_banzo(c)=fn_cv(c);
+    end
+end
+
+%% VERIFICAÇÃO DOS TIRANTES TRACIONADOS
+pen_cv_tir=0;
+for t=1:num_tirante
+    if fn_cv_tir(t)>FtRd_tir
+        pen_cv_tir=pen_cv_tir+1e10;
+    end    
+end 
+peso_tirante_uni=Ab_tir_x*7850*sqrt((espacamento_entre_porticos^2)+(dist_entre_esc^2));
+
+%% VERIFICAÇÃO DAS ESCORAS COMPRIMIDAS
+[pp_cv_u,preco_por_esc_u,pen_esc_u,NcRd_esc_u] = comp_perfil_u (espacamento_entre_porticos,E,fy,G,area_escora_comp,Iyy,Ixx,bww,tww,bff,tff,ryy,rxx,XX);
+
+tcv=(pp_cv_u/2)+peso_tirante_uni;
+%% VERIFICAÇÃO DOS BANZOS DO CONTRAVENTAMENTO (banzo superior da treliça de cobertura)
+[pen_banzo,NcRd_cv_banzo] = comp_cv_banzo (num_esc,conec_esc,E,fy,G,Iy,Ix,bw,tw,rx,Xbarra,dist_entre_esc);
+                                                                        
+pen_cv_tercas=pen_esc_u + pen_cv_tir+pen_banzo;
+
+peso_escora_u_total=2*area_escora_comp*num_esc*espacamento_entre_porticos*7850;%mulp por 2 para considerar o contraventamento nos dois extremos do galpao
+
+
+
+%% CARGA DE PESO PROPRIO DA ESTRUTURA
+PP = pp + tc + tl + ti + tcv + tmf; %carregamentos concentrados sobre os nós
+
+%% SOBRECARGA
+sc = sc*espacamento_entre_porticos; %N/m
+SC =zeros(n_nos,3);% [nó   intensidade_x  intensidade_y] inicialmente zeros
+for n=1:n_nos
+    SC(n,1)= n;
+end
+SC((n_divisoes_banzo_inf+1)*2+2,3)= -sc*(b/(n_tercas-1))/2;
+SC(n_nos,3)= SC((n_divisoes_banzo_inf+1)*2+2,3);
+for n=(n_divisoes_banzo_inf+1)*2+2:terca_a_cada_divisao_banzo_sup:(n_divisoes_banzo_inf+1)*2+2*n_divisoes_banzo_sup
+    if n~=(n_divisoes_banzo_inf+1)*2+2
+        SC(n,3)= -sc*(b/(n_tercas-1));
+    end
+end
+
+%% COMBINAÇÃO DE AÇÕES ELU - HIPÓTESES
+HIP_1 =zeros(n_nos,3);
+for n=1:n_nos
+    HIP_1(n,1)= n;
+    HIP_1(n,2)= 1.25*PP(n,2) + 1.5*SC(n,2);
+    HIP_1(n,3)= 1.25*PP(n,3) + 1.5*SC(n,3);
+end
+
+HIP_2 =zeros(n_nos,3);
+for n=1:n_nos
+    HIP_2(n,1)= n;
+    HIP_2(n,2)= 1.0*PP(n,2) + 1.4*V0(n,2); %coluna 2 sempre vazia?
+    HIP_2(n,3)= 1.0*PP(n,3) + 1.4*V0(n,3);
+end
+
+HIP_3 =zeros(n_nos,3);
+for n=1:n_nos
+    HIP_3(n,1)= n;
+    HIP_3(n,2)= 1.0*PP(n,2) + 1.4*V90d(n,2);
+    HIP_3(n,3)= 1.0*PP(n,3) + 1.4*V90d(n,3);
+end
+
+HIP_4 =zeros(n_nos,3);
+for n=1:n_nos
+    HIP_4(n,1)= n;
+    HIP_4(n,2)= 1.0*PP(n,2) + 1.4*V90e(n,2);
+    HIP_4(n,3)= 1.0*PP(n,3) + 1.4*V90e(n,3);
+end
+
+% Carregamentos, forças=[nó   intensidade_x  intensidade_y]
+n_forcas= n_nos; %forças externas (considerando forças em todos os nós)
+
+%FORÇAS ATUANTES NAS BARRAS POR HIPÓTESE
+fn_HIP_1= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_1);
+fn_HIP_2= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_2);
+fn_HIP_3= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_3);
+fn_HIP_4= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_4);
+
+%CONSIDERANDO AÇO MR250
+%ELU Escoamento da seção bruta
+NtRde(:) = An(:)*fy/1.1; %N     NtRd = Ag*fy/alfaa1
+%ELU Ruptura da seção líquida efetiva
+NtRdr(:) = Ct*An(:)*fu/1.35; %N    NtRd = Ae*fu/alfaa2
+
+%ELU Escoamento da seção bruta
+NtRde_cv_banzo = conec_esc(:,5)*fy/1.1; %N     NtRd = Ag*fy/alfaa1
+%ELU Ruptura da seção líquida efetiva
+NtRdr_cv_banzo = Ct*conec_esc(:,5)*fu/1.35; %N    NtRd = Ae*fu/alfaa2
+
+%CANTONEIRA SIMPLES
+[NcRds,pen_trelica_s] = compsimples2 (n_el,conec,bw,tw,E,G,fy,x,y,rmin,Ix,Iy,An,Xbarra);
+%CANTONEIRA DUPLA
+[NcRdd,pen_trelica_d]= compdupla (n_el,conec,bw,tw,E,G,fy,x,y,rx,Ix,Iy,An,Xbarra,esp_cv);
+
+%%MATRIZ COM AS COMPARAÇÕES ELU%%
+comparacao = compsol_restv2 (n_el,conec,NtRde,NtRdr,NcRds,NcRdd,fn_HIP_1,fn_HIP_2,fn_HIP_3,fn_HIP_4);
+comparacao_cv = compsol_cv(n_el_cv,NtRde_cv_banzo,NtRdr_cv_banzo,NcRd_esc_u,NcRd_cv_banzo,fn_cv_u,fn_cv_banzo);
+
+%disp('Matriz Comparação ELU')
+%disp(comparacao)
+
+%ELS
+%HIPÓTESES
+HIP1 =zeros(n_nos,3);
+for n=1:n_nos
+    HIP1(n,1)= n;
+    HIP1(n,2)= PP(n,2) + 0.7*SC(n,2);
+    HIP1(n,3)= PP(n,3) + 0.7*SC(n,3);
+end
+
+HIP2 =zeros(n_nos,3);
+for n=1:n_nos
+    HIP2(n,1)= n;
+    HIP2(n,2)= PP(n,2) + 0.3*V0(n,2) + 0.6*SC(n,2);
+    HIP2(n,3)= PP(n,3) + 0.3*V0(n,3) + 0.6*SC(n,3);
+end
+
+HIP3 =zeros(n_nos,3);
+for n=1:n_nos
+    HIP3(n,1)= n;
+    HIP3(n,2)= PP(n,2) + 0.3*V90d(n,2) + 0.6*SC(n,2);
+    HIP3(n,3)= PP(n,3) + 0.3*V90d(n,3) + 0.6*SC(n,3);
+end
+
+HIP4 =zeros(n_nos,3);
+for n=1:n_nos
+    HIP4(n,1)= n;
+    HIP4(n,2)= PP(n,2) + 0.3*V90e(n,2) + 0.6*SC(n,2);
+    HIP4(n,3)= PP(n,3) + 0.3*V90e(n,3) + 0.6*SC(n,3);
+end
+
+%DESLOCAMENTOS
+desloc_HIP1 = desloc (x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP1);
+desloc_HIP2 = desloc (x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP2);
+desloc_HIP3 = desloc (x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP3);
+desloc_HIP4 = desloc (x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP4);
+
+
+%DELOCAMENTO LIMITE- considerando Viga de cobertura do Anexo C NBR 8800/2008 P177
+desloc_max=b/250;
+
+%COMPARAÇÃO DESLOCAMENTO
+comp_desloc= zeros(n_el,4);
+
+for el=1:n_el
+    comp_desloc(el,1)=abs(desloc_HIP1(el))/desloc_max;
+    comp_desloc(el,2)=abs(desloc_HIP2(el))/desloc_max;
+    comp_desloc(el,3)=abs(desloc_HIP3(el))/desloc_max;
+    comp_desloc(el,4)=abs(desloc_HIP4(el))/desloc_max;
+end
+
+%Comparações das Hipóteses com os limites em Matriz Coluna
+Vcomp = comparacao(:);
+Vcomp_cv = comparacao_cv(:);
+Vcomp_desloc = comp_desloc(:);
+
+%PENALIDADE
+for n=1:length(Vcomp)
+    if abs(Vcomp(n))>1
+        pen(n) = abs(Vcomp(n))*1e10; %ELU
+    else
+        pen(n) = 0;
+    end
+end
+
+for n=1:length(Vcomp_cv)
+    if abs(Vcomp_cv(n))>1
+        pen_cv(n) = abs(Vcomp_cv(n))*1e10; %ELU
+    else
+        pen_cv(n) = 0;
+    end
+end
+
+for n=1:length(Vcomp_desloc)
+    if abs(Vcomp_desloc(n))>1
+        pen_desloc(n) = abs(Vcomp_desloc(n))*1e10;
+    else
+        pen_desloc(n) = 0;
+    end
+end
+
+
+penalidade = sum(pen)+ sum(pen_desloc)+ pen_telha+pen_cv_tercas+pen_tirante+pen_terca+pen_mao_francesa+pen_trelica_s+pen_trelica_d;
+
+%PESO FINAL
+preco_unitario=3.20;
+preco_trelica_sec=preco_unitario*peso_trelica_sec;
+assignin('base','peso_trelica_sec',peso_trelica_sec)
+
+peso_trelica_total=peso_trelica_sec*(48/espacamento_entre_porticos+1);
+peso_telha_total=peso_telha_sec*(48/espacamento_entre_porticos);
+peso_terca_total=peso_terca_sec*(48/espacamento_entre_porticos);
+peso_tirante_y_total=peso_tirante_y_sec*(48/espacamento_entre_porticos);
+peso_tirante_x_total=2*2*num_tirante*peso_tirante_uni;%considerando o contraventamento nos dois extremos do galpao
+peso_mao_francesa_total=peso_mao_francesa_sec*(48/espacamento_entre_porticos);
+
+assignin('base','peso_trelica_total',peso_trelica_total)
+assignin('base','peso_telha_total',peso_telha_total)
+assignin('base','peso_terca_total',peso_terca_total)
+assignin('base','peso_tirante_y_total',peso_tirante_y_total)
+assignin('base','peso_tirante_x_total',peso_tirante_x_total)
+assignin('base','peso_mao_francesa_total',peso_mao_francesa_total)
+assignin('base','peso_escora_u_total',peso_escora_u_total)
+
+peso_total=peso_trelica_total+peso_telha_total+peso_terca_total+peso_tirante_y_total+peso_tirante_x_total+peso_mao_francesa_total;
+assignin('base','peso_total',peso_total)
+
+preco_telha_total=preco_telha_sec*(48/espacamento_entre_porticos);
+preco_terca_total=preco_terca_sec*(48/espacamento_entre_porticos);
+preco_tirante_y_total=preco_tirante_y_sec*(48/espacamento_entre_porticos);
+preco_tirante_x_total=peso_tirante_x_total*4.01;
+preco_trelica_total=preco_trelica_sec*(48/espacamento_entre_porticos+1);
+preco_mao_francesa_total=preco_mao_francesa_sec*(48/espacamento_entre_porticos);
+
+assignin('base','preco_telha_total',preco_telha_total)
+assignin('base','preco_terca_total',preco_terca_total)
+assignin('base','preco_tirante_y_total',preco_tirante_y_total)
+assignin('base','preco_tirante_x_total',preco_tirante_x_total)
+assignin('base','preco_trelica_total',preco_trelica_total)
+assignin('base','preco_mao_francesa_total',preco_mao_francesa_total)
+assignin('base','preco_por_esc_u',preco_por_esc_u)
+
+custo_total=preco_telha_total+preco_terca_total+preco_tirante_y_total+preco_tirante_x_total+preco_trelica_total+preco_mao_francesa_total+penalidade;
+assignin('base','custo_total',custo_total)
+
+assignin('base','An',An);
+assignin('base','espmax',espmax);
+assignin('base','espessura_telha',espessura_telha)
+assignin('base','n_tercas',n_tercas)
+
+end
