@@ -379,7 +379,7 @@ fn_HIP_1= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_1)
 fn_HIP_2= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_2);
 fn_HIP_3= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_3);
 fn_HIP_4= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_4);
-
+  
 %CONSIDERANDO AÇO MR250
 %ELU Escoamento da seção bruta
 NtRde(:) = An(:)*fy/1.1; %N     NtRd = Ag*fy/alfaa1
@@ -490,6 +490,7 @@ penalidade = sum(pen)+ sum(pen_desloc)+ pen_telha+pen_cv_tercas+pen_tirante+pen_
 preco_unitario=3.20;
 preco_trelica_sec=preco_unitario*peso_trelica_sec;
 assignin('base','peso_trelica_sec',peso_trelica_sec)
+assignin('base','area_escora_comp',area_escora_comp);
 
 peso_trelica_total=peso_trelica_sec*(48/espacamento_entre_porticos+1);
 peso_telha_total=peso_telha_sec*(48/espacamento_entre_porticos);
@@ -515,6 +516,7 @@ preco_tirante_y_total=preco_tirante_y_sec*(48/espacamento_entre_porticos);
 preco_tirante_x_total=peso_tirante_x_total*4.01;
 preco_trelica_total=preco_trelica_sec*(48/espacamento_entre_porticos+1);
 preco_mao_francesa_total=preco_mao_francesa_sec*(48/espacamento_entre_porticos);
+preco_escora_u=peso_escora_u_total*3.55;
 
 assignin('base','preco_telha_total',preco_telha_total)
 assignin('base','preco_terca_total',preco_terca_total)
@@ -523,13 +525,39 @@ assignin('base','preco_tirante_x_total',preco_tirante_x_total)
 assignin('base','preco_trelica_total',preco_trelica_total)
 assignin('base','preco_mao_francesa_total',preco_mao_francesa_total)
 assignin('base','preco_por_esc_u',preco_por_esc_u)
+assignin('base','preco_escora_u',preco_escora_u)
 
 custo_total=preco_telha_total+preco_terca_total+preco_tirante_y_total+preco_tirante_x_total+preco_trelica_total+preco_mao_francesa_total+penalidade;
 assignin('base','custo_total',custo_total)
-
 assignin('base','An',An);
 assignin('base','espmax',espmax);
 assignin('base','espessura_telha',espessura_telha)
 assignin('base','n_tercas',n_tercas)
 
+
+assignin('base','E',E)
+assignin('base','G',G)
+assignin('base','fy',fy)
+assignin('base','fu',fu)
+assignin('base','Areas',Areas)
+assignin('base','bw_',bw_)
+assignin('base','tw_',tw_)
+assignin('base','Ix_',Ix_)
+assignin('base','Iy_',Iy_)
+assignin('base','rx_',rx_)
+assignin('base','rmin_',rmin_)
+assignin('base','Xbarra_',Xbarra_)
+assignin('base','esp_terca',esp_terca)
+assignin('base','esp_cv',esp_cv)
+assignin('base','penalidade',penalidade)
+
+global preco_final
+if custo_total<preco_final
+    %Calcula a força máxima e minima em cada posição
+    forcas_max = max([fn_HIP_1; fn_HIP_2; fn_HIP_3; fn_HIP_4]);
+    forcas_min = min([fn_HIP_1; fn_HIP_2; fn_HIP_3; fn_HIP_4]);
+    assignin('base','forcas_min',forcas_min);
+    assignin('base','forcas_max',forcas_max);    
+    preco_final=custo_total;
+end  
 end

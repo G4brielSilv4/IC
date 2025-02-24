@@ -5,16 +5,21 @@ rand('state',0)
 format long
 tic
 
+global esc
 global OFEs
 global b
+
 global preco_final
 preco_final=1e12;
+
 OFEs=0;
 Fobj = 'F1';
+
+
 %% SGA Parameters
 AlfaMin=0.1;    % minimum value that alpha may assume in Eq.(6): see section 3.4 ------ era 0.1
 AlfaInitial=2;       % initial value of alpha: Eq.(6) --------------------------------- era 2
-NIterations=1000;         % maximum number of iterations (it_max)
+NIterations=2000;         % maximum number of iterations (it_max)
 GlobalIterationsRatio = 0.3; % percentage of itmax dedicated to global phase selection scheme: see section 3.5
 PopulationSize = 100;      % population size: npop of Eq.(4)
 SearchGroupRatio=0.2;          % percentage of npop that forms the search group (0.2 = 20% of 100)
@@ -23,20 +28,237 @@ PlotFamily = false;     % define if plot the value of families
 b=20;
 n_iteracoes=1;
 
+%% Definição do numero de escoras comprimidas no contraventamento das tercas
+
+%otimizar essa pilha de vetor
+
+esp=(b/3)/2; %calculo para o espaçamento entre escoras nao ser menor que 3m (uma agua apenas é usada no calculo por isso o "/2")
+esp_max = floor(esp); %quantidade de espacamentos max entre escoras de uma agua apenas
+esp_esc = (1:esp_max); %quantidade de espacamento entre escoras,de uma agua apenas
+n_escoras = ((esp_esc*2)+1); %numero total de escoras
+esc = n_escoras;
+
+% Chamada da otimização
 for largura=1:1
     for rodada=1:n_iteracoes
-        %% Call SGA
+        % Call SGA
         [fopt,xopt] = SGA(Fobj,AlfaInitial,AlfaMin,PopulationSize,SearchGroupRatio,NIterations,GlobalIterationsRatio,NPerturbed,PlotFamily);
         xopt;  % minimum found
         fopt;  % objective function value at the minimum
         99;
-        
+      
         area_banzo_inf=An(1);
         area_banzo_sup=An((n_divisoes_banzo_inf+1)*2+1);
         area_barra_vert=An((n_divisoes_banzo_inf+1)*2+n_divisoes_banzo_inf*2+1);
         area_barra_inc=An((n_divisoes_banzo_inf+1)*2+n_divisoes_banzo_inf*2+4);
         Tempo=toc;
-
+        
+        % AGRUPAMENTO DAS CANTONEIRAS DA TRELIÇA
+        perfis_agrupados=zeros(1,n_el);
+        forcas_min(forcas_min>0)=0;
+        forcas_max(forcas_max<0)=0; %TESTE QUANTO A TRACAO AINDA NAO INSERIDO
+        
+        NRs_bnz_inf = grupos (E,G,fy,fu,Areas,bw_,tw_,Ix_,Iy_,rx_,rmin_,Xbarra_,esp_terca,esp_cv);%esforços normais maximos resistidos pelos perfis cantoneira para o comprimento max de banzo inferior
+        robusto_bnz_inf=abs(min(forcas_min(1:num_banzos_inf)));
+        rob_bnz_inf_tr=max(forcas_max(1:num_banzos_inf));
+        assignin('base','robusto_bnz_inf',robusto_bnz_inf)
+        assignin('base','rob_bnz_inf_tr',rob_bnz_inf_tr)
+        
+        %encontrando o perfil para o grupo mais robusto do banzo inferior
+        contador=1;
+        perfil_rob_bnz_inf=0;
+        while perfil_rob_bnz_inf==0
+            if NRs_bnz_inf(3,contador)>=robusto_bnz_inf
+                if NRs_bnz_inf(1,contador)>=(rob_bnz_inf_tr/2)%dividido por 2 pois como o perfil é duplo a resistencia é o dobro
+                    perfil_rob_bnz_inf=contador;
+                    contador=1;
+                else
+                    contador=contador+1;
+                end
+            else
+                contador=contador+1;
+            end
+        end
+        
+        esbelto_bnz_inf=abs(mean(forcas_min(1:num_banzos_inf)));
+        esb_bnz_inf_tr=mean(forcas_max(1:num_banzos_inf));
+        perfil_esb_bnz_inf=0;
+        
+        assignin('base','esbelto_bnz_inf',esbelto_bnz_inf)
+        assignin('base','esb_bnz_inf_tr',esb_bnz_inf_tr)
+        %encontrando o perfil para o grupo menos robusto do banzo inferior
+        while perfil_esb_bnz_inf==0
+            if NRs_bnz_inf(3,contador)>=esbelto_bnz_inf
+                if NRs_bnz_inf(1,contador)>=(esb_bnz_inf_tr/2) %dividido por 2 pois como o perfil é duplo a resistencia é o dobro
+                    perfil_esb_bnz_inf=contador;
+                    contador=1;
+                else
+                    contador=contador+1;
+                end
+            else
+                contador=contador+1;
+            end
+        end
+        
+        NRs_bnz_sup = grupos (E,G,fy,fu,Areas,bw_,tw_,Ix_,Iy_,rx_,rmin_,Xbarra_,esp_terca,esp_cv);%esforços normais maximos resistidos pelos perfis cantoneira para o comprimento max de banzo superior
+        robusto_bnz_sup=abs(min(forcas_min((num_banzos_inf+1):(num_banzos_inf+num_banzos_sup))));
+        rob_bnz_sup_tr=max(forcas_max((num_banzos_inf+1):(num_banzos_inf+num_banzos_sup)));
+        perfil_rob_bnz_sup=0;
+        while perfil_rob_bnz_sup==0
+            if NRs_bnz_sup(3,contador)>=robusto_bnz_sup
+                if NRs_bnz_sup(1,contador)>=(rob_bnz_sup_tr/2) %dividido por 2 pois como o perfil é duplo a resistencia é o dobro
+                    perfil_rob_bnz_sup=contador;
+                    contador=1;
+                else
+                    contador=contador+1;
+                end
+            else
+                contador=contador+1;
+            end
+        end
+        
+        esbelto_bnz_sup=abs(mean(forcas_min((num_banzos_inf+1):(num_banzos_inf+num_banzos_sup))));
+        esb_bnz_sup_tr=mean(forcas_max((num_banzos_inf+1):(num_banzos_inf+num_banzos_sup)));
+        perfil_esb_bnz_sup=0;
+        while perfil_esb_bnz_sup==0
+            if NRs_bnz_sup(3,contador)>=esbelto_bnz_sup
+                if NRs_bnz_sup(1,contador)>=(esb_bnz_sup_tr/2) %dividido por 2 pois como o perfil é duplo a resistencia é o dobro
+                    perfil_esb_bnz_sup=contador;
+                    contador=1;
+                else
+                    contador=contador+1;
+                end
+            else
+                contador=contador+1;
+            end
+        end
+        
+        NRs_vertical = grupos (E,G,fy,fu,Areas,bw_,tw_,Ix_,Iy_,rx_,rmin_,Xbarra_,altura_cobertura,esp_cv);%esforços normais maximos resistidos pelos perfis cantoneira para o comprimento max de barra vertical
+        vertical=abs(min(forcas_min((num_banzos_inf+num_banzos_sup+1):(num_banzos_inf+num_banzos_sup+num_montantes))));
+        vertical_tr=max(forcas_max((num_banzos_inf+num_banzos_sup+1):(num_banzos_inf+num_banzos_sup+num_montantes)));
+        perfil_barra_vert=0;
+        while perfil_barra_vert==0
+            if NRs_vertical(2,contador)>=vertical
+                if NRs_vertical(1,contador)>=(vertical_tr)
+                    perfil_barra_vert=contador;
+                    contador=1;
+                else
+                    contador=contador+1;
+                end
+            else
+                contador=contador+1;
+            end
+            if contador>9 %solucao para se nenhum dos perfis passar na verificacao, penalidade ira aumentar o custo
+                penalidade=1e10;
+                perfil_barra_vert=1;
+                contador=1;
+            end
+        end
+        
+        NRs_diag = grupos (E,G,fy,fu,Areas,bw_,tw_,Ix_,Iy_,rx_,rmin_,Xbarra_,maior_tam_diag,esp_cv);%esforços normais maximos resistidos pelos perfis cantoneira para o comprimento max de barra diagonal
+        robusto_diag=abs(min(forcas_min((n_el-num_diagonais+1):end)));
+        rob_diag_tr=abs(min(forcas_min((n_el-num_diagonais+1):end)));
+        perfil_rob_barra_diag=0;
+        while perfil_rob_barra_diag==0
+            if NRs_diag(2,contador)>=robusto_diag
+                perfil_rob_barra_diag=contador;
+                if NRs_diag(1,contador)>=(rob_diag_tr)
+                    perfil_rob_barra_diag=contador;
+                    contador=1;
+                else
+                    contador=contador+1;
+                end
+            else
+                contador=contador+1;
+            end
+        end
+        
+        esbelto_diag=abs(mean(forcas_min((n_el-num_diagonais+1):end)));
+        esb_diag_tr=abs(mean(forcas_min((n_el-num_diagonais+1):end)));
+        perfil_esb_barra_diag=0;
+        while perfil_esb_barra_diag==0
+            if NRs_diag(2,contador)>=esbelto_diag
+                if NRs_diag(1,contador)>=(esb_diag_tr)
+                    perfil_esb_barra_diag=contador;
+                    contador=1;
+                else
+                    contador=contador+1;
+                end
+            else
+                contador=contador+1;
+            end
+        end
+        
+        %preenchimento do vetor com os novos perfis dos elementos
+        for rr=1:n_el
+            %banzos inferiores
+            if rr<=num_banzos_inf
+                if abs(forcas_min(rr))<=esbelto_bnz_inf
+                    perfis_agrupados(rr)=perfil_esb_bnz_inf;
+                else
+                    perfis_agrupados(rr)=perfil_rob_bnz_inf;
+                end
+            end
+            
+            %banzos superiores
+            if rr>num_banzos_inf && rr<=(num_banzos_inf+num_banzos_sup)
+                if abs(forcas_min(rr))<=esbelto_bnz_sup
+                    perfis_agrupados(rr)=perfil_esb_bnz_sup;
+                else
+                    perfis_agrupados(rr)=perfil_rob_bnz_sup;
+                end
+            end
+            
+            %barras verticais
+            if rr>(num_banzos_inf+num_banzos_sup) && rr<=(num_banzos_inf+num_banzos_sup+num_montantes)
+                perfis_agrupados(rr)=perfil_barra_vert;
+            end
+            
+            %barras diagonais
+            if rr>(num_banzos_inf+num_banzos_sup+num_montantes) && rr<=n_el
+                if abs(forcas_min(rr))<=esbelto_diag
+                    perfis_agrupados(rr)=perfil_esb_barra_diag;
+                else
+                    perfis_agrupados(rr)=perfil_rob_barra_diag;
+                end
+            end
+            
+            assignin('base','perfil_rob_bnz_inf',perfil_rob_bnz_inf)
+            assignin('base','perfil_esb_bnz_inf',perfil_esb_bnz_inf)
+            assignin('base','perfil_rob_bnz_sup',perfil_rob_bnz_sup)
+            assignin('base','perfil_esb_bnz_sup',perfil_esb_bnz_sup)
+            assignin('base','perfil_barra_vert',perfil_barra_vert)
+            assignin('base','perfil_rob_barra_diag',perfil_rob_barra_diag)
+            assignin('base','perfil_esb_barra_diag',perfil_esb_barra_diag)
+            assignin('base','perfis_agrupados',perfis_agrupados)
+        end
+        disp('*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*')    
+        disp(['O preço total da cobertura é ',num2str(custo_total),' reais'])
+        disp(' ')
+        disp(['A massa de uma treliça é ',num2str(peso_trelica_sec),' kg'])
+        disp(' ')
+        disp(['A massa da cobertura é ',num2str(peso_trelica_total),' kg'])
+        disp('*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*')
+        
+        %peso corrigido dos elementos da treliça
+        peso_corrigido=zeros(1,n_el);       
+        
+        for nn=1:n_el
+            no1=conec(nn,3);
+            no2=conec(nn,4);
+            L = sqrt((x(no2) - x(no1))^2 + (y(no2) - y(no1))^2);
+            area=Areas(perfis_agrupados(nn));
+            peso_corrigido(nn)=7850*area*L;
+        end  
+        peso_tt_trelica=sum(peso_corrigido);
+        peso_total=peso_tt_trelica+peso_telha_total+peso_terca_total+peso_tirante_y_total+peso_tirante_x_total+peso_escora_u_total+peso_mao_francesa_total;
+        
+        %correcao de custo
+        preco_tt_trelica=3.20*peso_tt_trelica*(48/espacamento_entre_porticos+1);
+        custo_total=preco_telha_total+preco_terca_total+preco_tirante_y_total+preco_tt_trelica+preco_mao_francesa_total+preco_tirante_x_total+preco_escora_u+penalidade;
+       
+        %% RESULTADOS DA OTIMIZAÇÃO
+              
         disp('*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*')
         
         disp(['Largura do galpão: ',num2str(b)])
@@ -45,63 +267,72 @@ for largura=1:1
         disp(['Rodada: ',num2str(rodada)])
         
         disp(' ')
-        disp(['A massa de uma treliça é ',num2str(peso_trelica_sec),' kg'])
+        disp(['A massa de uma treliça é ',num2str(peso_tt_trelica),' kg'])
         
         disp(' ')
-        disp(['A massa da cobertura é ',num2str(peso_trelica_total),' kg'])
+        disp(['A massa da cobertura é ',num2str(peso_total),' kg'])
         
         disp(' ')
         disp(['O preço total da cobertura é ',num2str(custo_total),' reais'])
         
         disp('----------------------------------------------------------------------')
-        disp(['Área das barras do banzo inferior: ',num2str(area_banzo_inf*10000),' cm²'])
-        
-        disp(' ')
-        disp(['Área das barras do banzo superior: ',num2str(area_banzo_sup*10000),' cm²'])
-        
-        disp(' ')
-        disp(['Área da barra vertical: ',num2str(area_barra_vert*10000),' cm²'])
-        
-        disp(' ')
-        disp(['Área da barra inclinada: ',num2str(area_barra_inc*10000),' cm²'])
-        
-        disp(' ')
-        disp(['Número de divisões do banzo inferior: ',num2str(n_divisoes_banzo_inf)])
-        
-        disp(' ')
-        disp(['A espessura da telha: ',num2str(espessura_telha),' mm'])
-        
-        disp(' ')
-        disp(['Número de terças: ',num2str(n_tercas)])
-        
-        disp(' ')
-        disp(['O espaçamento máximo entre terças: ',num2str(espmax),' m'])
-        
-        disp(' ')
-        disp(['Espaçamento efetivo entre terças: ',num2str(esp_terca),' m'])
-        
-        disp(' ')
-        disp(['Área das terças com perfil U: ',num2str(area_terca*10000),' cm²'])
-        
-        disp(' ')
-        disp(['O diâmetro do tirante Y: ',num2str(diametro_tirante_y*100),' cm'])
-        
-        disp(' ')
-        disp(['Área da mão francesa: ',num2str(area_mao_francesa*10000),' cm²'])
-        
-        disp(' ')
-        disp(['Número de contraventamentos (mão francesa): ',num2str(n_contraventamentos)])
-        
-        disp(' ')
-        disp(['A altura da treliça: ',num2str(altura_cobertura),' m'])
-        
-        disp(' ')
-        disp(['Espaçamento entre banzos: ',num2str(esp_entre_banzos),' m'])
-        
-        disp(' ')
-        disp(['O espaçamento entre treliças: ',num2str(espacamento_entre_porticos),' m'])
-        
+%         disp(['Área das escoras comprimidas do contraventamento das terças: ',num2str(area_escora_comp*10000),' cm²'])
+%         
+%         disp(' ')
+%         disp(['Área das barras do banzo inferior: ',num2str(area_banzo_inf*10000),' cm²'])
+%         
+%         disp(' ')
+%         disp(['Área das barras do banzo superior: ',num2str(area_banzo_sup*10000),' cm²'])
+%         
+%         disp(' ')
+%         disp(['Área da barra vertical: ',num2str(area_barra_vert*10000),' cm²'])
+%         
+%         disp(' ')
+%         disp(['Área da barra inclinada: ',num2str(area_barra_inc*10000),' cm²'])
+%         
+%         disp(' ')
+%         disp(['Número de divisões do banzo inferior: ',num2str(n_divisoes_banzo_inf)])
+%         
+%         disp(' ')
+%         disp(['A espessura da telha: ',num2str(espessura_telha),' mm'])
+%         
+%         disp(' ')
+%         disp(['Número de terças: ',num2str(n_tercas)])
+%         
+%         disp(' ')
+%         disp(['O espaçamento máximo entre terças: ',num2str(espmax),' m'])
+%         
+%         disp(' ')
+%         disp(['Espaçamento efetivo entre terças: ',num2str(esp_terca),' m'])
+%         
+%         disp(' ')
+%         disp(['Área das terças com perfil U: ',num2str(area_terca*10000),' cm²'])
+%         
+%         disp(' ')
+%         disp(['O diâmetro do tirante Y: ',num2str(diametro_tirante_y*100),' cm'])
+%         
+%         disp(' ')
+%         disp(['O diâmetro do tirante X: ',num2str(d_tir*100),' cm'])
+%         
+%         disp(' ')
+%         disp(['Área da mão francesa: ',num2str(area_mao_francesa*10000),' cm²'])
+%         
+%         disp(' ')
+%         disp(['Número de contraventamentos (mão francesa): ',num2str(n_contraventamentos)])
+%         
+%         disp(' ')
+%         disp(['A altura da treliça: ',num2str(altura_cobertura),' m'])
+%         
+%         disp(' ')
+%         disp(['Espaçamento entre banzos: ',num2str(esp_entre_banzos),' m'])
+%         
+%         disp(' ')
+%         disp(['O espaçamento entre treliças: ',num2str(espacamento_entre_porticos),' m'])
+      
         disp('----------------------------------------------------------------------')
+        disp(['Massa total do perfil U (escoras do contraventamento das terças): ',num2str(peso_escora_u_total),' kg'])
+ 
+        disp(' ')        
         disp(['Massa total da telha trapezoidal 40: ',num2str(peso_telha_total),' kg'])
         
         disp(' ')
@@ -111,12 +342,22 @@ for largura=1:1
         disp(['Massa total das barras redondas trefiladas (tirantes em Y): ',num2str(peso_tirante_y_total),' kg'])
         
         disp(' ')
+        disp(['Massa total das barras redondas trefiladas (tirantes em X): ',num2str(peso_tirante_x_total),' kg'])
+        
+        disp(' ')
         disp(['Massa total dos perfis cantoneira (mão francesa): ',num2str(peso_mao_francesa_total),' kg'])
         
         disp(' ')
         disp(['Massa total dos perfis cantoneira (treliças): ',num2str(peso_trelica_total),' kg'])
         
         disp('----------------------------------------------------------------------')
+
+        disp(['Custo treliças: ',num2str(preco_tt_trelica),' reais'])
+        
+        disp(' ')
+        disp(['Custo total do perfil U (escoras do contraventamento das terças): ',num2str(preco_escora_u),' reais'])
+                
+        disp(' ')
         disp(['Custo total da telha trapezoidal 40: ',num2str(preco_telha_total),' reais'])
         
         disp(' ')
@@ -126,23 +367,18 @@ for largura=1:1
         disp(['Custo total das barras redondas trefiladas (tirantes em Y): ',num2str(preco_tirante_y_total),' reais'])
         
         disp(' ')
-        disp(['Custo total das barras redondas trefiladas (tirantes em X): ',num2str(preco_tirante_x_total),' reais'])
-        
+        disp(['Custo total das barras redondas trefiladas (tirantes em X): ',num2str(preco_tirante_x_total),' reais'])      
+      
         disp(' ')
         disp(['Custo total dos perfis cantoneira (mão francesa): ',num2str(preco_mao_francesa_total),' reais'])
-        
-        disp(' ')
-        disp(['Custo total dos perfis cantoneira (treliças): ',num2str(preco_trelica_total),' reais'])
-        
+               
         disp('----------------------------------------------------------------------')
         disp(['Tempo de execução do código: ',num2str(Tempo/3600),' h'])
         
         disp('*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*')
         
         desenho(x,y,n_el,conec)
-
+        desenho(xx,yy,n_el_cv,conec_esc)
         
     end
 end
-
-

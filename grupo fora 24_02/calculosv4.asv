@@ -300,8 +300,8 @@ for c=1:n_el_cv
         fn_cv_tir(c)=fn_cv(c);
     else
         fn_cv_banzo(c)=fn_cv(c);
-    end    
-end    
+    end
+end
 
 %% VERIFICAÇÃO DOS TIRANTES TRACIONADOS
 pen_cv_tir=0;
@@ -315,6 +315,7 @@ peso_tirante_uni=Ab_tir_x*7850*sqrt((espacamento_entre_porticos^2)+(dist_entre_e
 %% VERIFICAÇÃO DAS ESCORAS COMPRIMIDAS
 [pp_cv_u,preco_por_esc_u,pen_esc_u,NcRd_esc_u] = comp_perfil_u (espacamento_entre_porticos,E,fy,G,area_escora_comp,Iyy,Ixx,bww,tww,bff,tff,ryy,rxx,XX);
 
+tcv=(pp_cv_u/2)+peso_tirante_uni;
 %% VERIFICAÇÃO DOS BANZOS DO CONTRAVENTAMENTO (banzo superior da treliça de cobertura)
 [pen_banzo,NcRd_cv_banzo] = comp_cv_banzo (num_esc,conec_esc,E,fy,G,Iy,Ix,bw,tw,rx,Xbarra,dist_entre_esc);
                                                                         
@@ -378,12 +379,17 @@ fn_HIP_1= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_1)
 fn_HIP_2= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_2);
 fn_HIP_3= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_3);
 fn_HIP_4= forcaatuante(x,y,n_nos,n_el,E,conec,An,n_rest,GDL_rest,n_forcas,HIP_4);
-
+  
 %CONSIDERANDO AÇO MR250
 %ELU Escoamento da seção bruta
 NtRde(:) = An(:)*fy/1.1; %N     NtRd = Ag*fy/alfaa1
 %ELU Ruptura da seção líquida efetiva
 NtRdr(:) = Ct*An(:)*fu/1.35; %N    NtRd = Ae*fu/alfaa2
+
+%ELU Escoamento da seção bruta
+NtRde_cv_banzo = conec_esc(:,5)*fy/1.1; %N     NtRd = Ag*fy/alfaa1
+%ELU Ruptura da seção líquida efetiva
+NtRdr_cv_banzo = Ct*conec_esc(:,5)*fu/1.35; %N    NtRd = Ae*fu/alfaa2
 
 %CANTONEIRA SIMPLES
 [NcRds,pen_trelica_s] = compsimples2 (n_el,conec,bw,tw,E,G,fy,x,y,rmin,Ix,Iy,An,Xbarra);
@@ -392,6 +398,7 @@ NtRdr(:) = Ct*An(:)*fu/1.35; %N    NtRd = Ae*fu/alfaa2
 
 %%MATRIZ COM AS COMPARAÇÕES ELU%%
 comparacao = compsol_restv2 (n_el,conec,NtRde,NtRdr,NcRds,NcRdd,fn_HIP_1,fn_HIP_2,fn_HIP_3,fn_HIP_4);
+comparacao_cv = compsol_cv(n_el_cv,NtRde_cv_banzo,NtRdr_cv_banzo,NcRd_esc_u,NcRd_cv_banzo,fn_cv_u,fn_cv_banzo);
 
 %disp('Matriz Comparação ELU')
 %disp(comparacao)
@@ -448,6 +455,7 @@ end
 
 %Comparações das Hipóteses com os limites em Matriz Coluna
 Vcomp = comparacao(:);
+Vcomp_cv = comparacao_cv(:);
 Vcomp_desloc = comp_desloc(:);
 
 %PENALIDADE
@@ -456,6 +464,14 @@ for n=1:length(Vcomp)
         pen(n) = abs(Vcomp(n))*1e10; %ELU
     else
         pen(n) = 0;
+    end
+end
+
+for n=1:length(Vcomp_cv)
+    if abs(Vcomp_cv(n))>1
+        pen_cv(n) = abs(Vcomp_cv(n))*1e10; %ELU
+    else
+        pen_cv(n) = 0;
     end
 end
 
@@ -468,7 +484,7 @@ for n=1:length(Vcomp_desloc)
 end
 
 
-penalidade = sum(pen)+ sum(pen_desloc)+ pen_telha+pen_contraventamento+pen_tirante+pen_terca+pen_mao_francesa+pen_trelica_s+pen_trelica_d;
+penalidade = sum(pen)+ sum(pen_desloc)+ pen_telha+pen_cv_tercas+pen_tirante+pen_terca+pen_mao_francesa+pen_trelica_s+pen_trelica_d;
 
 %PESO FINAL
 preco_unitario=3.20;
@@ -479,7 +495,7 @@ peso_trelica_total=peso_trelica_sec*(48/espacamento_entre_porticos+1);
 peso_telha_total=peso_telha_sec*(48/espacamento_entre_porticos);
 peso_terca_total=peso_terca_sec*(48/espacamento_entre_porticos);
 peso_tirante_y_total=peso_tirante_y_sec*(48/espacamento_entre_porticos);
-peso_tirante_x_total=peso_tirante_x_sec*2;
+peso_tirante_x_total=2*2*num_tirante*peso_tirante_uni;%considerando o contraventamento nos dois extremos do galpao
 peso_mao_francesa_total=peso_mao_francesa_sec*(48/espacamento_entre_porticos);
 
 assignin('base','peso_trelica_total',peso_trelica_total)
@@ -488,6 +504,7 @@ assignin('base','peso_terca_total',peso_terca_total)
 assignin('base','peso_tirante_y_total',peso_tirante_y_total)
 assignin('base','peso_tirante_x_total',peso_tirante_x_total)
 assignin('base','peso_mao_francesa_total',peso_mao_francesa_total)
+assignin('base','peso_escora_u_total',peso_escora_u_total)
 
 peso_total=peso_trelica_total+peso_telha_total+peso_terca_total+peso_tirante_y_total+peso_tirante_x_total+peso_mao_francesa_total;
 assignin('base','peso_total',peso_total)
@@ -495,9 +512,10 @@ assignin('base','peso_total',peso_total)
 preco_telha_total=preco_telha_sec*(48/espacamento_entre_porticos);
 preco_terca_total=preco_terca_sec*(48/espacamento_entre_porticos);
 preco_tirante_y_total=preco_tirante_y_sec*(48/espacamento_entre_porticos);
-preco_tirante_x_total=preco_tirante_x_sec*2;
+preco_tirante_x_total=peso_tirante_x_total*4.01;
 preco_trelica_total=preco_trelica_sec*(48/espacamento_entre_porticos+1);
 preco_mao_francesa_total=preco_mao_francesa_sec*(48/espacamento_entre_porticos);
+preco_escora_u=peso_escora_u_total*3.55;
 
 assignin('base','preco_telha_total',preco_telha_total)
 assignin('base','preco_terca_total',preco_terca_total)
@@ -505,13 +523,40 @@ assignin('base','preco_tirante_y_total',preco_tirante_y_total)
 assignin('base','preco_tirante_x_total',preco_tirante_x_total)
 assignin('base','preco_trelica_total',preco_trelica_total)
 assignin('base','preco_mao_francesa_total',preco_mao_francesa_total)
+assignin('base','preco_por_esc_u',preco_por_esc_u)
+assignin('base','preco_escora_u',preco_escora_u)
 
 custo_total=preco_telha_total+preco_terca_total+preco_tirante_y_total+preco_tirante_x_total+preco_trelica_total+preco_mao_francesa_total+penalidade;
 assignin('base','custo_total',custo_total)
-
 assignin('base','An',An);
 assignin('base','espmax',espmax);
 assignin('base','espessura_telha',espessura_telha)
 assignin('base','n_tercas',n_tercas)
 
+
+assignin('base','E',E)
+assignin('base','G',G)
+assignin('base','fy',fy)
+assignin('base','fu',fu)
+assignin('base','Areas',Areas)
+assignin('base','bw_',bw_)
+assignin('base','tw_',tw_)
+assignin('base','Ix_',Ix_)
+assignin('base','Iy_',Iy_)
+assignin('base','rx_',rx_)
+assignin('base','rmin_',rmin_)
+assignin('base','Xbarra_',Xbarra_)
+assignin('base','esp_terca',esp_terca)
+assignin('base','esp_cv',esp_cv)
+assignin('base','penalidade',penalidade)
+
+global preco_final
+if custo_total<preco_final
+    %Calcula a força máxima e minima em cada posição
+    forcas_max = max([fn_HIP_1; fn_HIP_2; fn_HIP_3; fn_HIP_4]);
+    forcas_min = min([fn_HIP_1; fn_HIP_2; fn_HIP_3; fn_HIP_4]);
+    assignin('base','forcas_min',forcas_min);
+    assignin('base','forcas_max',forcas_max);    
+    preco_final=custo_total;
+end  
 end
